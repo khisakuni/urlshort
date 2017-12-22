@@ -7,6 +7,10 @@ import (
 )
 
 type pathToURL map[string]string
+type pathURL struct {
+	Path string `yaml:"path"`
+	URL  string `yaml:"url"`
+}
 
 // MapHandler will return an http.HandlerFunc (which also
 // implements http.Handler) that will attempt to map any
@@ -35,37 +39,38 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 // See MapHandler to create a similar http.HandlerFunc via
 // a mapping of paths to urls.
 func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	m, err := parseYAML(yml)
+	pathURLs, err := parseYAML(yml)
 	if err != nil {
 		return nil, err
 	}
-	return redirectFunc(m, fallback), err
+	m := buildMap(pathURLs)
+	return MapHandler(m, fallback), nil
 }
 
 func redirectFunc(p2u pathToURL, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if url, ok := p2u[r.URL.Path]; ok {
-			http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-		} else {
-			fallback.ServeHTTP(w, r)
+			http.Redirect(w, r, url, http.StatusFound)
+			return
 		}
+		fallback.ServeHTTP(w, r)
 	}
 }
 
-func parseYAML(yml []byte) (pathToURL, error) {
-	var pathUrls []struct {
-		Path string `yaml:"path"`
-		URL  string `yaml:"url"`
-	}
-	m := make(pathToURL)
+func parseYAML(yml []byte) ([]pathURL, error) {
+	var pathURLs []pathURL
 
-	err := yaml.Unmarshal(yml, &pathUrls)
+	err := yaml.Unmarshal(yml, &pathURLs)
 	if err != nil {
-		return m, err
+		return nil, err
 	}
+	return pathURLs, nil
+}
 
-	for _, pathURL := range pathUrls {
-		m[pathURL.Path] = pathURL.URL
+func buildMap(pathURLS []pathURL) pathToURL {
+	m := make(pathToURL)
+	for _, pu := range pathURLS {
+		m[pu.Path] = pu.URL
 	}
-	return m, err
+	return m
 }
